@@ -1,9 +1,21 @@
 import torch
 from einops import rearrange
-from flash_attn import flash_attn_func as flash_attn_func_v2
-from liger_kernel.ops.rope import LigerRopeFunction
 from torch import Tensor
 from typing import Tuple
+
+try:
+    from flash_attn import flash_attn_func as flash_attn_func_v2
+    SUPPORT_FA2 = True
+except ModuleNotFoundError:
+    flash_attn_func_v2 = None
+    SUPPORT_FA2 = False
+
+try:
+    from liger_kernel.ops.rope import LigerRopeFunction
+    SUPPORT_LIGER = True
+except ModuleNotFoundError:
+    LigerRopeFunction = None
+    SUPPORT_LIGER = False
 
 try:
     from flash_attn_interface import flash_attn_func as flash_attn_func_v3
@@ -14,6 +26,8 @@ except:
 
 
 def flash_attn_func(q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+    if not SUPPORT_FA2 and not SUPPORT_FA3:
+        raise RuntimeError("Flash attention is not available. Please install flash-attn to use this function.")
     if SUPPORT_FA3:
         return flash_attn_func_v3(q, k, v)[0]
     return flash_attn_func_v2(q, k, v)
@@ -23,6 +37,8 @@ def attention(q: Tensor, k: Tensor, v: Tensor, pe) -> Tensor:
     if isinstance(pe, torch.Tensor):
         q, k = apply_rope(q, k, pe)
     else:
+        if not SUPPORT_LIGER:
+            raise RuntimeError("Liger kernel is not available. Please install liger-kernel to use this function.")
         cos, sin = pe
         q, k = LigerRopeFunction.apply(q, k, cos, sin)
         # to compare with the original implementation
